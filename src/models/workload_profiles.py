@@ -33,11 +33,11 @@ def generate_edge_ai_workload(Ts: float, horizon: int) -> np.ndarray:
     burst_idx = (time >= 5.0) & (time < 12.0)
     medium_idx = time >= 12.0
 
-    workload[low_idx] = 0.15
-    workload[burst_idx] = 0.42
-    workload[medium_idx] = 0.25
+    workload[low_idx] = 0.022
+    workload[burst_idx] = 0.055
+    workload[medium_idx] = 0.034
 
     # Add small random jitter to mimic stochastic workloads without biasing algorithms.
     rng = np.random.default_rng(seed=42)
-    workload += rng.normal(loc=0.0, scale=0.01, size=workload.shape)
-    return np.clip(workload, 0.0, 0.6)
+    workload += rng.normal(loc=0.0, scale=0.003, size=workload.shape)
+    return np.clip(workload, 0.0, 0.08)

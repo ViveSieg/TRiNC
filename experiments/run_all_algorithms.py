@@ -12,26 +12,25 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.trinc.config.default_config import (
+from src.config.default_config import (
     default_controller_params,
     default_simulation_params,
 )
-from src.trinc.controllers.event_pid import EventPIDController
-from src.trinc.controllers.lif_snn_controller import LIFSpikingController
-from src.trinc.controllers.pid_controller import PIDController
-from src.trinc.controllers.pid_deadzone import PIDDeadzoneController
-from src.trinc.controllers.trinc_controller import TRINCController
-from src.trinc.models.thermal_model import ThermalModel
-from src.trinc.models.workload_profiles import generate_edge_ai_workload
-from src.trinc.paths import ensure_artifact_layout, get_artifact_layout
-from src.trinc.simulation.metrics import compute_metrics
-from src.trinc.simulation.simulate_closed_loop import run_closed_loop
-from src.trinc.utils.io_utils import save_metrics_csv, save_time_series_csv
-from src.trinc.utils.plotting import (
-    plot_control_signals,
-    plot_energy_bar,
-    plot_event_counts,
-    plot_temperature_responses,
+from src.controllers.event_pid import EventPIDController
+from src.controllers.lif_snn_controller import LIFSpikingController
+from src.controllers.pid_controller import PIDController
+from src.controllers.pid_deadzone import PIDDeadzoneController
+from src.controllers.trinc_controller import TRINCController
+from src.models.thermal_model import ThermalModel
+from src.models.workload_profiles import generate_edge_ai_workload
+from src.paths import ensure_artifact_layout, get_artifact_layout
+from src.simulation.metrics import compute_metrics
+from src.simulation.simulate_closed_loop import run_closed_loop
+from src.utils.io_utils import (
+    save_collated_time_series_csv,
+    save_metrics_csv,
+    save_metric_subset_csv,
+    save_time_series_csv,
 )
 
 CONTROLLERS = {
@@ -116,20 +115,34 @@ def main(artifacts_root: Path | None = None) -> None:
 
     save_metrics_csv(artifacts.metrics / "metrics_summary.csv", metrics_records)
 
-    metrics_by_algo = {record["algo_name"]: record for record in metrics_records}
+    save_metric_subset_csv(
+        artifacts.metrics / "energy_comparison.csv",
+        metrics_records,
+        columns=["algo_name", "E1", "E2"],
+    )
+    save_metric_subset_csv(
+        artifacts.metrics / "event_counts.csv",
+        metrics_records,
+        columns=["algo_name", "N_events", "N_du"],
+    )
 
-    plot_temperature_responses(
-        time_series_results, artifacts.figures / "temperature_responses.png"
-    )
-    plot_control_signals(
-        time_series_results, artifacts.figures / "control_signals.png"
-    )
-    plot_energy_bar(
-        metrics_by_algo, artifacts.figures / "energy_comparison_bar.png"
-    )
-    plot_event_counts(
-        metrics_by_algo, artifacts.figures / "event_counts_bar.png"
-    )
+    if time_series_results:
+        first = next(iter(time_series_results.values()))
+        time_vector = first["time"]
+        reference = first.get("T_ref")
+
+        save_collated_time_series_csv(
+            artifacts.metrics / "temperature_responses.csv",
+            time_vector,
+            {name: data["temperature"] for name, data in time_series_results.items()},
+            reference=reference,
+            reference_name="T_ref",
+        )
+        save_collated_time_series_csv(
+            artifacts.metrics / "control_signals.csv",
+            time_vector,
+            {name: data["control"] for name, data in time_series_results.items()},
+        )
 
     try:
         root_display = artifacts.root.relative_to(Path.cwd())

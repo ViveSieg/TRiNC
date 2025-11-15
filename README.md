@@ -27,19 +27,17 @@ TRiNC_py/
 ├── experiments/           # Benchmark automation scripts
 ├── main.py                # CLI entry point for single runs or sweeps
 ├── src/
-│   └── trinc/
-│       ├── config/        # Default tuning dictionaries
-│       ├── controllers/   # PID, event-driven, SNN, and TRiNC policies
-│       ├── models/        # Thermal plant and workload generators
-│       ├── simulation/    # Closed-loop simulator and metric calculators
-│       ├── utils/         # I/O and plotting helpers
-│       └── paths.py       # Centralised artifact-directory management
+│   ├── config/        # Default tuning dictionaries
+│   ├── controllers/   # PID, event-driven, SNN, and TRiNC policies
+│   ├── models/        # Thermal plant and workload generators
+│   ├── simulation/    # Closed-loop simulator and metric calculators
+│   ├── utils/         # I/O and CSV helpers
+│   └── paths.py       # Centralised artifact-directory management
 └── requirements.txt       # Python dependencies
 ```
 
-The new `src/trinc` package consolidates all source modules in a conventional
-`src/`-layout, and experiment outputs now land under a single `artifacts/` root to
-simplify result management and archiving.
+All source modules live under a conventional `src/` layout, and experiment outputs
+land under a single `artifacts/` root to simplify result management and archiving.
 
 ---
 
@@ -52,7 +50,7 @@ pip install -r requirements.txt
 # Run the flagship TRiNC controller and export logs/figures to ./artifacts
 python main.py --algo trinc
 
-# Run every controller and build aggregate figures/metrics
+# Run every controller and build aggregate CSV summaries
 python experiments/run_all_algorithms.py
 ```
 
@@ -64,8 +62,8 @@ python experiments/run_all_algorithms.py --artifacts-root results/2024-jetson-st
 ```
 
 All CSV logs are stored in `<artifacts-root>/time_series/`, aggregate metrics in
-`<artifacts-root>/metrics/metrics_summary.csv`, and publication-quality figures in
-`<artifacts-root>/figures/`.
+`<artifacts-root>/metrics/metrics_summary.csv`, and comparison tables in
+`<artifacts-root>/metrics/` (e.g. `temperature_responses.csv`).
 
 ---
 
@@ -109,13 +107,13 @@ TRiNC's energy efficiency or event sparsity when evaluated on identical workload
 
 ## Extending the Benchmark
 
-1. Create a new controller class inside `src/trinc/controllers/` implementing
+1. Create a new controller class inside `src/controllers/` implementing
    `reset()` and `compute_control(error)`.
 2. Register it in the `CONTROLLERS` dictionary in `main.py` and
    `experiments/run_all_algorithms.py`.
-3. Add tuning defaults to `src/trinc/config/default_config.py`.
-4. Optionally customise plots or metrics in `src/trinc/utils/plotting.py` and
-   `src/trinc/simulation/metrics.py`.
+3. Add tuning defaults to `src/config/default_config.py`.
+4. Optionally customise CSV export helpers in `src/utils/io_utils.py` and
+   metric calculations in `src/simulation/metrics.py`.
 
 ---
 

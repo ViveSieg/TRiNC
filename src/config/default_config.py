@@ -5,7 +5,7 @@ def default_simulation_params():
     """Return default plant and simulation parameters."""
     return {
         "tau_th": 2.0,  # thermal time constant [s]
-        "K_cool": -0.7,  # cooling gain (negative)
+        "K_cool": -1.2,  # cooling gain (negative)
         "Ts": 0.1,  # sampling time [s]
         "T_ref": 0.55,  # reference temperature (normalized)
         "T0": 0.5,  # initial temperature
@@ -22,8 +22,8 @@ def default_controller_params():
             "Kp": 3.0,
             "Ki": 0.6,
             "Kd": 0.2,
-            "error_threshold": 0.02,
-            "delta_threshold": 0.015,
+            "error_threshold": 0.012,
+            "delta_threshold": 0.008,
             "decay": 0.01,
         },
         "lif_snn": {
@@ -34,15 +34,16 @@ def default_controller_params():
             "decay": 0.05,
         },
         "trinc": {
-            "tau_p": 0.02,
-            "tau_s": 0.025,
-            "theta_h": 0.05,
-            "alpha_h": 0.1,
-            "w_h": 0.25,
-            "rho": 0.92,
-            "a_p": 0.15,
-            "a_h": 0.12,
-            "a_s": 0.18,
-            "refractory_steps": 2,
+            "tau_p": 0.045,
+            "tau_s": 0.048,
+            "theta_h": 0.055,
+            "alpha_h": 0.035,
+            "w_h": 0.24,
+            "rho": 0.88,
+            "a_p": 0.24,
+            "a_h": 0.125,
+            "a_s": 0.19,
+            "refractory_steps": 9,
+            "base_cooling": 0.22,
         },
     }
