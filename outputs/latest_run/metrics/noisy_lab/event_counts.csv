@@ -1,0 +1,6 @@
+algo_name,N_events,N_du
+pid,52,52
+pid_deadzone,51,51
+event_pid,45,45
+lif_snn,53,53
+trinc,17,67

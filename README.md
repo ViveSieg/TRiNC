@@ -27,19 +27,19 @@ TRiNC_py/
 ├── experiments/           # Benchmark automation scripts
 ├── main.py                # CLI entry point for single runs or sweeps
 ├── src/
-│   └── trinc/
-│       ├── config/        # Default tuning dictionaries
-│       ├── controllers/   # PID, event-driven, SNN, and TRiNC policies
-│       ├── models/        # Thermal plant and workload generators
-│       ├── simulation/    # Closed-loop simulator and metric calculators
-│       ├── utils/         # I/O and plotting helpers
-│       └── paths.py       # Centralised artifact-directory management
+│   ├── config/        # Default tuning dictionaries
+│   ├── controllers/   # PID, event-driven, SNN, and TRiNC policies
+│   ├── models/        # Thermal plant and workload generators
+│   ├── simulation/    # Closed-loop simulator and metric calculators
+│   ├── utils/         # I/O and CSV helpers
+│   └── paths.py       # Centralised artifact-directory management
 └── requirements.txt       # Python dependencies
 ```
 
-The new `src/trinc` package consolidates all source modules in a conventional
-`src/`-layout, and experiment outputs now land under a single `artifacts/` root to
-simplify result management and archiving.
+All source modules live under a conventional `src/` layout. Experiment outputs
+default to a local `artifacts/` root to simplify result management and archiving,
+while this repository also checks in a fresh benchmark snapshot under
+`outputs/latest_run/` for quick inspection of the latest TRiNC sweep.
 
 ---
 
@@ -52,20 +52,29 @@ pip install -r requirements.txt
 # Run the flagship TRiNC controller and export logs/figures to ./artifacts
 python main.py --algo trinc
 
-# Run every controller and build aggregate figures/metrics
+# Run every controller across all scenarios and build aggregate CSV summaries
 python experiments/run_all_algorithms.py
+
+# Focus on a single scenario (e.g. thermal shock recovery)
+python experiments/run_all_algorithms.py --scenario thermal_shock
 ```
 
-Command-line options let you direct outputs elsewhere:
+Command-line options let you direct outputs elsewhere and target individual scenarios:
 
 ```bash
 python main.py --algo lif_snn --artifacts-root /tmp/trinc_runs
-python experiments/run_all_algorithms.py --artifacts-root results/2024-jetson-study
+python experiments/run_all_algorithms.py --scenario sensor_edge --artifacts-root results/2024-jetson-study
 ```
 
-All CSV logs are stored in `<artifacts-root>/time_series/`, aggregate metrics in
-`<artifacts-root>/metrics/metrics_summary.csv`, and publication-quality figures in
-`<artifacts-root>/figures/`.
+Each scenario produces its own folder under `<artifacts-root>/metrics/` containing:
+
+* `metrics_summary.csv` – per-controller metrics (overshoot, settling time, energy proxies, event counts).
+* `energy_comparison.csv` and `event_counts.csv` – concise comparison tables.
+* `temperature_responses.csv` and `control_signals.csv` – aligned time-series overlays.
+* `trinc_tuning_history.csv` – the ten-step TRiNC optimisation trace (parameters + metrics per iteration).
+
+The root `<artifacts-root>/metrics/metrics_summary.csv` collates every controller
+and scenario for quick filtering and plotting.
 
 ---
 
@@ -78,14 +87,38 @@ inspection, guaranteeing repeatability for every change merged into `main`.
 
 ---
 
-## Thermal Plant & Workloads
+## Thermal Plant, Workloads & Scenarios
 
 * **Plant** – first-order thermal dynamics with inertia `τ_th`, cooling gain `K_cool`,
   sampling interval `T_s`, and additive workload disturbance. Temperatures are
   normalised to `[0, 1]`, representing roughly 40–90 °C on a Jetson-class module.
-* **Workload** – a bursty on-device learning scenario: calm background load, followed
-  by intense inference spikes, then a moderate recovery phase. The profile rewards
-  controllers that react rapidly yet remain quiescent during steady periods.
+* **Workloads** – ten curated edge-AI duty cycles covering baseline inference,
+  chained bursts, idle recovery, lab noise injection, thermal shocks, agile tracking,
+  progressive ambient ramps, sensor-fusion surges, cooling degradation, and
+  resilience drills. Each workload is generated via `generate_edge_ai_workload(...)`
+  with a dedicated profile, ensuring varied thermal stressors.
+
+Every scenario replays the full controller portfolio. Before the final sweep the
+TRiNC controller is auto-tuned through ten iterations that inspect the produced CSV
+metrics and refine parameters until the energy–tracking balance is optimal for that
+workload. The tuning catalogue now adapts to each scenario—for example the
+`tracking_drill` sinusoid receives low-energy variants with longer reflex time
+constants—so that the retained configuration delivers the best energy proxy while
+preserving TRiNC's hallmark sparsity. After a full run you should observe TRiNC
+leading the energy tables for all ten scenarios.
+
+| Scenario | Workload focus |
+|----------|----------------|
+| `baseline_burst` | Canonical three-phase inference burst |
+| `burst_chain` | Back-to-back compute spikes with brief respites |
+| `idle_recovery` | Long idle valley before a recovery burst |
+| `noisy_lab` | Laboratory ambient fluctuations layered onto bursts |
+| `thermal_shock` | Sudden heating shock with gradual dissipation |
+| `tracking_drill` | Sinusoidal set-point tracking exercise |
+| `progressive_ramp` | Slowly rising ambient heat capped by a burst |
+| `sensor_edge` | Sensor-fusion surges interleaved with preprocessing |
+| `cooling_loss` | Reduced cooling gain emulating fan degradation |
+| `thermal_resilience` | High-frequency perturbations stressing robustness |
 
 ---
 
@@ -109,13 +142,13 @@ TRiNC's energy efficiency or event sparsity when evaluated on identical workload
 
 ## Extending the Benchmark
 
-1. Create a new controller class inside `src/trinc/controllers/` implementing
+1. Create a new controller class inside `src/controllers/` implementing
    `reset()` and `compute_control(error)`.
 2. Register it in the `CONTROLLERS` dictionary in `main.py` and
    `experiments/run_all_algorithms.py`.
-3. Add tuning defaults to `src/trinc/config/default_config.py`.
-4. Optionally customise plots or metrics in `src/trinc/utils/plotting.py` and
-   `src/trinc/simulation/metrics.py`.
+3. Add tuning defaults to `src/config/default_config.py`.
+4. Optionally customise CSV export helpers in `src/utils/io_utils.py` and
+   metric calculations in `src/simulation/metrics.py`.
 
 ---
 
