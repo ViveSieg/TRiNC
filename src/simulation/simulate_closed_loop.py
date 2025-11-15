@@ -6,7 +6,7 @@ from typing import Dict, Any
 
 import numpy as np
 
-from src.trinc.models.thermal_model import ThermalModel
+from ..models.thermal_model import ThermalModel
 
 
 def run_closed_loop(
@@ -60,7 +60,7 @@ def run_closed_loop(
         extra = {key: [] for key in controller.event_log}
 
     for k in range(horizon):
-        error[k] = T_ref - T_k
+        error[k] = T_k - T_ref
         u_k = controller.compute_control(error[k])
         control_signal[k] = u_k
         temperature[k] = T_k

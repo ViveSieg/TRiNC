@@ -8,21 +8,21 @@ from typing import Dict
 
 import numpy as np
 
-from src.trinc.config.default_config import (
+from src.config.default_config import (
     default_controller_params,
     default_simulation_params,
 )
-from src.trinc.controllers.event_pid import EventPIDController
-from src.trinc.controllers.lif_snn_controller import LIFSpikingController
-from src.trinc.controllers.pid_controller import PIDController
-from src.trinc.controllers.pid_deadzone import PIDDeadzoneController
-from src.trinc.controllers.trinc_controller import TRINCController
-from src.trinc.models.thermal_model import ThermalModel
-from src.trinc.models.workload_profiles import generate_edge_ai_workload
-from src.trinc.paths import ArtifactLayout, ensure_artifact_layout, get_artifact_layout
-from src.trinc.simulation.metrics import compute_metrics
-from src.trinc.simulation.simulate_closed_loop import run_closed_loop
-from src.trinc.utils.io_utils import save_time_series_csv
+from src.controllers.event_pid import EventPIDController
+from src.controllers.lif_snn_controller import LIFSpikingController
+from src.controllers.pid_controller import PIDController
+from src.controllers.pid_deadzone import PIDDeadzoneController
+from src.controllers.trinc_controller import TRINCController
+from src.models.thermal_model import ThermalModel
+from src.models.workload_profiles import generate_edge_ai_workload
+from src.paths import ArtifactLayout, ensure_artifact_layout, get_artifact_layout
+from src.simulation.metrics import compute_metrics
+from src.simulation.simulate_closed_loop import run_closed_loop
+from src.utils.io_utils import save_time_series_csv
 
 CONTROLLERS = {
     "pid": PIDController,
