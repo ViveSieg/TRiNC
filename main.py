@@ -8,17 +8,21 @@ from typing import Dict
 
 import numpy as np
 
-from src.config.default_config import default_simulation_params, default_controller_params
-from src.controllers.pid_controller import PIDController
-from src.controllers.pid_deadzone import PIDDeadzoneController
-from src.controllers.event_pid import EventPIDController
-from src.controllers.lif_snn_controller import LIFSpikingController
-from src.controllers.trinc_controller import TRINCController
-from src.models.thermal_model import ThermalModel
-from src.models.workload_profiles import generate_edge_ai_workload
-from src.simulation.simulate_closed_loop import run_closed_loop
-from src.simulation.metrics import compute_metrics
-from src.utils.io_utils import save_time_series_csv
+from src.trinc.config.default_config import (
+    default_controller_params,
+    default_simulation_params,
+)
+from src.trinc.controllers.event_pid import EventPIDController
+from src.trinc.controllers.lif_snn_controller import LIFSpikingController
+from src.trinc.controllers.pid_controller import PIDController
+from src.trinc.controllers.pid_deadzone import PIDDeadzoneController
+from src.trinc.controllers.trinc_controller import TRINCController
+from src.trinc.models.thermal_model import ThermalModel
+from src.trinc.models.workload_profiles import generate_edge_ai_workload
+from src.trinc.paths import ArtifactLayout, ensure_artifact_layout, get_artifact_layout
+from src.trinc.simulation.metrics import compute_metrics
+from src.trinc.simulation.simulate_closed_loop import run_closed_loop
+from src.trinc.utils.io_utils import save_time_series_csv
 
 CONTROLLERS = {
     "pid": PIDController,
@@ -35,7 +39,7 @@ def instantiate_controller(name: str, params: Dict[str, float], Ts: float):
     return CONTROLLERS[name](**params)
 
 
-def run_single_algorithm(algo_name: str) -> Dict[str, float]:
+def run_single_algorithm(algo_name: str, artifacts: ArtifactLayout) -> Dict[str, float]:
     sim_cfg = default_simulation_params()
     ctrl_cfg = default_controller_params()[algo_name]
 
@@ -60,7 +64,7 @@ def run_single_algorithm(algo_name: str) -> Dict[str, float]:
     extra_cols = {}
     if "gP" in results:
         extra_cols = {key: results[key] for key in ("gP", "gH", "gS")}
-    csv_path = Path("data/time_series") / f"{algo_name}_results.csv"
+    csv_path = artifacts.time_series / f"{algo_name}_results.csv"
     save_time_series_csv(
         csv_path,
         time=results["time"],
@@ -93,16 +97,25 @@ def main() -> None:
         default="trinc",
         help="Controller to execute",
     )
+    parser.add_argument(
+        "--artifacts-root",
+        type=Path,
+        default=None,
+        help="Optional path for storing generated artifacts",
+    )
     args = parser.parse_args()
+
+    artifacts = get_artifact_layout(args.artifacts_root)
+    ensure_artifact_layout(artifacts)
 
     if args.algo == "all":
         metrics_summary = {}
         for algo in CONTROLLERS:
             print(f"Running {algo}...")
-            metrics_summary[algo] = run_single_algorithm(algo)
+            metrics_summary[algo] = run_single_algorithm(algo, artifacts)
             print(metrics_summary[algo])
     else:
-        metrics = run_single_algorithm(args.algo)
+        metrics = run_single_algorithm(args.algo, artifacts)
         print(f"Metrics for {args.algo}: {metrics}")
 
 
