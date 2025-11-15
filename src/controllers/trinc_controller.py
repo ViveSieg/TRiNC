@@ -67,9 +67,8 @@ class TRINCController:
         if h_temp >= self.theta_h:
             g_h = 1.0
             h_temp -= self.theta_h
-        elif h_temp <= -self.theta_h:
-            g_h = -1.0
-            h_temp += self.theta_h
+        elif h_temp < 0.0:
+            h_temp = max(h_temp, 0.0)
         self.h_state = h_temp
 
         # S gate: surprise reflex for rapid changes
