@@ -6,7 +6,7 @@ from typing import Dict, Any
 
 import numpy as np
 
-from src.models.thermal_model import ThermalModel
+from src.trinc.models.thermal_model import ThermalModel
 
 
 def run_closed_loop(

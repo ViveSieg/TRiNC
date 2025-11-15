@@ -2,22 +2,32 @@
 
 from __future__ import annotations
 
+import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
 
-from src.config.default_config import default_simulation_params, default_controller_params
-from src.controllers.pid_controller import PIDController
-from src.controllers.pid_deadzone import PIDDeadzoneController
-from src.controllers.event_pid import EventPIDController
-from src.controllers.lif_snn_controller import LIFSpikingController
-from src.controllers.trinc_controller import TRINCController
-from src.models.thermal_model import ThermalModel
-from src.models.workload_profiles import generate_edge_ai_workload
-from src.simulation.simulate_closed_loop import run_closed_loop
-from src.simulation.metrics import compute_metrics
-from src.utils.io_utils import save_time_series_csv, save_metrics_csv
-from src.utils.plotting import (
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.trinc.config.default_config import (
+    default_controller_params,
+    default_simulation_params,
+)
+from src.trinc.controllers.event_pid import EventPIDController
+from src.trinc.controllers.lif_snn_controller import LIFSpikingController
+from src.trinc.controllers.pid_controller import PIDController
+from src.trinc.controllers.pid_deadzone import PIDDeadzoneController
+from src.trinc.controllers.trinc_controller import TRINCController
+from src.trinc.models.thermal_model import ThermalModel
+from src.trinc.models.workload_profiles import generate_edge_ai_workload
+from src.trinc.paths import ensure_artifact_layout, get_artifact_layout
+from src.trinc.simulation.metrics import compute_metrics
+from src.trinc.simulation.simulate_closed_loop import run_closed_loop
+from src.trinc.utils.io_utils import save_metrics_csv, save_time_series_csv
+from src.trinc.utils.plotting import (
     plot_control_signals,
     plot_energy_bar,
     plot_event_counts,
@@ -39,7 +49,10 @@ def instantiate(name: str, params, Ts: float):
     return CONTROLLERS[name](**params)
 
 
-def main() -> None:
+def main(artifacts_root: Path | None = None) -> None:
+    artifacts = get_artifact_layout(artifacts_root)
+    ensure_artifact_layout(artifacts)
+
     sim_cfg = default_simulation_params()
     ctrl_cfgs = default_controller_params()
 
@@ -69,7 +82,7 @@ def main() -> None:
         extra_cols = {}
         if "gP" in results:
             extra_cols = {key: results[key] for key in ("gP", "gH", "gS")}
-        csv_path = Path("data/time_series") / f"{name}_results.csv"
+        csv_path = artifacts.time_series / f"{name}_results.csv"
         save_time_series_csv(
             csv_path,
             time=results["time"],
@@ -101,17 +114,37 @@ def main() -> None:
             "T_ref": np.full_like(results["time"], sim_cfg["T_ref"]),
         }
 
-    save_metrics_csv(Path("data/summary/metrics_summary.csv"), metrics_records)
+    save_metrics_csv(artifacts.metrics / "metrics_summary.csv", metrics_records)
 
     metrics_by_algo = {record["algo_name"]: record for record in metrics_records}
 
-    plot_temperature_responses(time_series_results, Path("figures/temperature_responses.png"))
-    plot_control_signals(time_series_results, Path("figures/control_signals.png"))
-    plot_energy_bar(metrics_by_algo, Path("figures/energy_comparison_bar.png"))
-    plot_event_counts(metrics_by_algo, Path("figures/event_counts_bar.png"))
+    plot_temperature_responses(
+        time_series_results, artifacts.figures / "temperature_responses.png"
+    )
+    plot_control_signals(
+        time_series_results, artifacts.figures / "control_signals.png"
+    )
+    plot_energy_bar(
+        metrics_by_algo, artifacts.figures / "energy_comparison_bar.png"
+    )
+    plot_event_counts(
+        metrics_by_algo, artifacts.figures / "event_counts_bar.png"
+    )
 
-    print("All simulations complete. Results saved to data/ and figures/ directories.")
+    try:
+        root_display = artifacts.root.relative_to(Path.cwd())
+    except ValueError:
+        root_display = artifacts.root
+    print(f"All simulations complete. Results saved under {root_display}.")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Run the full TRiNC benchmark suite")
+    parser.add_argument(
+        "--artifacts-root",
+        type=Path,
+        default=None,
+        help="Optional path for storing generated metrics, logs, and figures",
+    )
+    args = parser.parse_args()
+    main(args.artifacts_root)
