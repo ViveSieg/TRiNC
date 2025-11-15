@@ -19,14 +19,14 @@ venv/
 env/
 
 # Experiment outputs (由 GitHub Actions 生成，不要加入仓库)
-artifacts/
-*.png
-*.jpg
-*.jpeg
-*.csv
-*.npy
-*.npz
-*.log
+#artifacts/
+#*.png
+#*.jpg
+#*.jpeg
+#*.csv
+#*.npy
+#*.npz
+#*.log
 
 # System cache
 Thumbs.db
