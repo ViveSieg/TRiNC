@@ -33,18 +33,19 @@ class TRINCController:
     refractory_steps: int = 0
     u_min: float = 0.0
     u_max: float = 1.0
+    base_cooling: float = 0.22
 
     def __post_init__(self) -> None:
         self.h_state = 0.0
         self.prev_error = 0.0
-        self.prev_output = 0.0
+        self.prev_output = self.base_cooling
         self.refractory = 0
         self.event_log = {"gP": [], "gH": [], "gS": []}
 
     def reset(self) -> None:
         self.h_state = 0.0
         self.prev_error = 0.0
-        self.prev_output = 0.0
+        self.prev_output = self.base_cooling
         self.refractory = 0
         self.event_log = {"gP": [], "gH": [], "gS": []}
 
@@ -55,8 +56,8 @@ class TRINCController:
 
         # P gate: magnitude-based reflex
         g_p = 0.0
-        if abs(error) > self.tau_p:
-            g_p = float(1.0 if error > 0 else -1.0)
+        if error > self.tau_p:
+            g_p = 1.0
 
         # H gate: leaky accumulator
         h_temp = (1.0 - self.alpha_h) * self.h_state + self.w_h * error
@@ -64,15 +65,14 @@ class TRINCController:
         if h_temp >= self.theta_h:
             g_h = 1.0
             h_temp -= self.theta_h
-        elif h_temp <= -self.theta_h:
-            g_h = -1.0
-            h_temp += self.theta_h
+        elif h_temp < 0.0:
+            h_temp = max(h_temp, 0.0)
         self.h_state = h_temp
 
         # S gate: surprise reflex for rapid changes
         g_s = 0.0
-        if abs(delta_error) > self.tau_s:
-            g_s = float(1.0 if delta_error > 0 else -1.0)
+        if delta_error > self.tau_s and error > 0:
+            g_s = 1.0
 
         # Optional refractory behavior to avoid chatter
         if self.refractory > 0:
