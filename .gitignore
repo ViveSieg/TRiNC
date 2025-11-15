@@ -28,5 +28,9 @@ artifacts/
 *.npz
 *.log
 
+# Curated benchmark snapshots committed for review
+!outputs/
+!outputs/**
+
 # System cache
 Thumbs.db
