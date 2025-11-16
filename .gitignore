@@ -18,19 +18,25 @@ venv/
 .venv/
 env/
 
-# Experiment outputs (由 GitHub Actions 生成，不要加入仓库)
-artifacts/
+# Experiment outputs generated locally
+artifacts/*
+!artifacts/README.md
+!artifacts/metrics/
+artifacts/metrics/*
+!artifacts/metrics/sample_run/
+!artifacts/metrics/sample_run/**
+!artifacts/time_series/
+artifacts/time_series/*
+!artifacts/time_series/sample_run/
+!artifacts/time_series/sample_run/**
+
+# Media dumps
 *.png
 *.jpg
 *.jpeg
-*.csv
 *.npy
 *.npz
 *.log
-
-# Curated benchmark snapshots committed for review
-!outputs/
-!outputs/**
 
 # System cache
 Thumbs.db

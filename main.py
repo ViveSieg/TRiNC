@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Tuple
 
 import numpy as np
 
@@ -22,7 +22,12 @@ from src.models.workload_profiles import generate_edge_ai_workload
 from src.paths import ArtifactLayout, ensure_artifact_layout, get_artifact_layout
 from src.simulation.metrics import compute_metrics
 from src.simulation.simulate_closed_loop import run_closed_loop
-from src.utils.io_utils import save_time_series_csv
+from src.utils.io_utils import (
+    save_collated_time_series_csv,
+    save_metric_subset_csv,
+    save_metrics_csv,
+    save_time_series_csv,
+)
 
 CONTROLLERS = {
     "pid": PIDController,
@@ -39,7 +44,9 @@ def instantiate_controller(name: str, params: Dict[str, float], Ts: float):
     return CONTROLLERS[name](**params)
 
 
-def run_single_algorithm(algo_name: str, artifacts: ArtifactLayout) -> Dict[str, float]:
+def run_single_algorithm(
+    algo_name: str, artifacts: ArtifactLayout
+) -> Tuple[Dict[str, float], Dict[str, np.ndarray]]:
     sim_cfg = default_simulation_params()
     ctrl_cfg = default_controller_params()[algo_name]
 
@@ -61,10 +68,15 @@ def run_single_algorithm(algo_name: str, artifacts: ArtifactLayout) -> Dict[str,
         algo_name=algo_name,
     )
 
+    single_time_dir = artifacts.time_series / "single"
+    single_metric_dir = artifacts.metrics / "single"
+    single_time_dir.mkdir(parents=True, exist_ok=True)
+    single_metric_dir.mkdir(parents=True, exist_ok=True)
+
     extra_cols = {}
     if "gP" in results:
         extra_cols = {key: results[key] for key in ("gP", "gH", "gS")}
-    csv_path = artifacts.time_series / f"{algo_name}_results.csv"
+    csv_path = single_time_dir / f"{algo_name}.csv"
     save_time_series_csv(
         csv_path,
         time=results["time"],
@@ -85,7 +97,19 @@ def run_single_algorithm(algo_name: str, artifacts: ArtifactLayout) -> Dict[str,
         T_ref=sim_cfg["T_ref"],
         event_flags=event_flags,
     )
-    return metrics
+
+    metrics_record = {"algo_name": algo_name, **metrics}
+    save_metrics_csv(single_metric_dir / f"{algo_name}.csv", [metrics_record])
+
+    time_vector = np.array(results["time"], dtype=float)
+    time_series_record = {
+        "time": time_vector,
+        "temperature": np.array(results["temperature"], dtype=float),
+        "control": np.array(results["control"], dtype=float),
+        "reference": np.full_like(time_vector, sim_cfg["T_ref"], dtype=float),
+    }
+
+    return metrics_record, time_series_record
 
 
 def main() -> None:
@@ -109,14 +133,52 @@ def main() -> None:
     ensure_artifact_layout(artifacts)
 
     if args.algo == "all":
-        metrics_summary = {}
+        summary_rows = []
+        time_series_records = {}
+
         for algo in CONTROLLERS:
             print(f"Running {algo}...")
-            metrics_summary[algo] = run_single_algorithm(algo, artifacts)
-            print(metrics_summary[algo])
+            metrics_record, time_series_record = run_single_algorithm(algo, artifacts)
+            summary_rows.append(metrics_record)
+            time_series_records[algo] = time_series_record
+            print(metrics_record)
+
+        single_metric_dir = artifacts.metrics / "single"
+        single_metric_dir.mkdir(parents=True, exist_ok=True)
+        save_metrics_csv(single_metric_dir / "metrics_summary.csv", summary_rows)
+        save_metric_subset_csv(
+            single_metric_dir / "energy_comparison.csv",
+            summary_rows,
+            columns=["algo_name", "E1", "E2"],
+        )
+        save_metric_subset_csv(
+            single_metric_dir / "event_counts.csv",
+            summary_rows,
+            columns=["algo_name", "N_events", "N_du"],
+        )
+
+        single_time_dir = artifacts.time_series / "single"
+        single_time_dir.mkdir(parents=True, exist_ok=True)
+        if time_series_records:
+            first_algo = next(iter(time_series_records))
+            time_vector = time_series_records[first_algo]["time"]
+            reference = time_series_records[first_algo]["reference"]
+
+            save_collated_time_series_csv(
+                single_time_dir / "temperature_responses.csv",
+                time_vector,
+                {name: data["temperature"] for name, data in time_series_records.items()},
+                reference=reference,
+                reference_name="T_ref",
+            )
+            save_collated_time_series_csv(
+                single_time_dir / "control_signals.csv",
+                time_vector,
+                {name: data["control"] for name, data in time_series_records.items()},
+            )
     else:
-        metrics = run_single_algorithm(args.algo, artifacts)
-        print(f"Metrics for {args.algo}: {metrics}")
+        metrics_record, _ = run_single_algorithm(args.algo, artifacts)
+        print(f"Metrics for {args.algo}: {metrics_record}")
 
 
 if __name__ == "__main__":
