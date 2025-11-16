@@ -10,6 +10,8 @@ on:
 jobs:
   run-experiments:
     runs-on: ubuntu-latest
+    env:
+      ARTIFACTS_ROOT: artifacts/ci
 
     steps:
       - name: Checkout repository
@@ -27,18 +29,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Prepare artifact layout
+        run: |
+          rm -rf "$ARTIFACTS_ROOT"
+          mkdir -p "$ARTIFACTS_ROOT"
+
       - name: Validate source layout
         run: python -m compileall src
 
       - name: Run TRiNC spotlight benchmark
-        run: python main.py --algo trinc --artifacts-root artifacts/ci
+        run: python main.py --algo trinc --artifacts-root "$ARTIFACTS_ROOT"
 
       - name: Execute full controller sweep
-        run: python experiments/run_all_algorithms.py --artifacts-root artifacts/ci
+        run: python experiments/run_all_algorithms.py --artifacts-root "$ARTIFACTS_ROOT"
 
       - name: Upload experiment outputs
         uses: actions/upload-artifact@v4
         with:
           name: trinc-results
-          path: artifacts/ci/**
+          path: ${{ env.ARTIFACTS_ROOT }}/**
           if-no-files-found: warn

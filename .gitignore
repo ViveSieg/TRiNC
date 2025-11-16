@@ -22,9 +22,13 @@ env/
 artifacts/*
 !artifacts/README.md
 !artifacts/metrics/
-!artifacts/metrics/**
+artifacts/metrics/*
+!artifacts/metrics/sample_run/
+!artifacts/metrics/sample_run/**
 !artifacts/time_series/
-!artifacts/time_series/baseline_burst_trinc.csv
+artifacts/time_series/*
+!artifacts/time_series/sample_run/
+!artifacts/time_series/sample_run/**
 
 # Media dumps
 *.png

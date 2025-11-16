@@ -1,14 +1,14 @@
 # Curated Artifacts
 
-This folder stores a lightweight snapshot of generated experiment outputs so the
-project tree reflects the default layout expected by the CLI utilities.
+This directory illustrates the layout that automation scripts expect when they
+persist experiment results.  The sample files capture one previously recorded
+run and help downstream tooling (for example plotting utilities) initialise the
+correct folder structure.
 
-- `metrics/` contains run-level CSV summaries that were produced by executing
-  the controller suite.
-- `time_series/baseline_burst_trinc.csv` captures the closed-loop response of
-  the TRINC controller on the `baseline_burst` scenario and serves as a sample
-  trace for plotting utilities.
+- `metrics/sample_run/` stores aggregate CSV summaries from the controller
+  sweep.
+- `time_series/sample_run/` provides a single closed-loop trace for quick
+  inspection.
 
-New experiment runs can be directed to another location via the
-`--artifacts-root` flag to avoid polluting the repository with large result
-sets.
+Fresh experiment runs can be redirected to another location via the
+`--artifacts-root` flag if you want to keep the curated snapshot untouched.

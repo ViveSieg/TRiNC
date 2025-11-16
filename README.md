@@ -1,7 +1,7 @@
 # TRiNC Thermal Control Benchmark
 
 This repository bundles a small simulation harness for comparing thermal
-controllers on an abstracted edge-AI workload.  It focuses on the neuromorphic
+controllers on abstracted edge-AI workloads.  It focuses on the neuromorphic
 Tri-Reflex Neural Control (TRiNC) policy and keeps a set of classical baselines
 so you can reproduce the closed-loop experiments described in the accompanying
 codebase.
@@ -10,19 +10,66 @@ codebase.
 
 - Deterministic plant and workload model implemented in `src/models/`.
 - Controller portfolio (PID, dead-zone PID, event-triggered PID, leaky-integrate-
-  and-fire SNN, and TRINC) under `src/controllers/`.
+  and-fire SNN, and TRiNC) under `src/controllers/`.
 - Metric computation utilities in `src/simulation/metrics.py` and CSV helpers in
   `src/utils/io_utils.py`.
 - Command line entry points for running a single controller (`main.py`) or the
   full sweep across scenarios (`experiments/run_all_algorithms.py`).
+
+## Simulation Stack
+
+- **Thermal plant** – `src/models/thermal_model.py` provides a reduced-order
+  model that captures heat accumulation, dissipation, and actuator response for
+  embedded devices.
+- **Workload generator** – `src/models/workload_profiles.py` synthesises activity
+  traces ranging from calm idle behaviour to bursty inference so controllers can
+  be evaluated under diverse edge deployments.
+- **Metric pipeline** – `src/simulation/metrics.py` distils time-series outputs
+  into regulation quality, energy proxies, and sparsity indicators that feed the
+  comparison reports.
+
+## Controller Portfolio
+
+All controllers expose the same `compute_control` interface, making it easy to
+swap policies during experiments:
+
+- **PID** delivers a classic proportional–integral–derivative feedback loop for
+  stable regulation in nominal conditions.
+- **PID with dead zone** suppresses small error corrections to trade reactivity
+  for actuator efficiency.
+- **Event-triggered PID** evaluates the PID law on demand, reducing updates when
+  thermal states remain steady.
+- **Leaky integrate-and-fire SNN** emulates neuromorphic processing to deliver
+  sparse control impulses for energy-sensitive workloads.
+- **TRiNC** fuses reflex loops with adaptive gains so the controller stays agile
+  under abrupt workload shifts.
+
+## Scenario Catalogue
+
+The batch runner exercises controllers on a family of workload narratives
+defined in `experiments/run_all_algorithms.py`:
+
+- `baseline_burst` – nominal inference bursts with recovery windows.
+- `burst_chain` – consecutive bursts that stress cooling recovery.
+- `idle_recovery` – prolonged idle phases followed by renewed demand.
+- `noisy_lab` – disturbances injected on top of the baseline profile.
+- `thermal_shock` – sudden heating events with sluggish dissipation.
+- `tracking_drill` – smooth tracking of oscillatory targets.
+- `progressive_ramp` – gradually rising ambient conditions ending in a burst.
+- `sensor_edge` – intermittent sensor fusion workloads.
+- `cooling_loss` – degraded actuator authority representing airflow issues.
+- `thermal_resilience` – high-frequency thermal perturbations.
 
 ## Repository Layout
 
 ```
 TRiNC_py/
 ├── artifacts/             # Curated example outputs kept under version control
-│   ├── metrics/           # Aggregate CSV summaries from a recorded run
-│   └── time_series/       # Sample closed-loop trace
+│   ├── metrics/
+│   │   └── sample_run/    # Aggregate CSV summaries from a recorded run
+│   └── time_series/
+│       └── sample_run/    # Sample closed-loop trace
+├── .github/workflows/     # Automation for GitHub Actions
 ├── experiments/           # Batch scripts and notebooks for comparisons
 ├── src/                   # Source package with configs, controllers, models
 ├── main.py                # CLI for running one controller
@@ -34,6 +81,16 @@ The files inside `artifacts/` illustrate the expected directory structure when
 running the tooling.  New experiment runs can be redirected to another location
 via the `--artifacts-root` flag if you do not want to overwrite the curated
 snapshot.
+
+## Automation
+
+The repository ships with `.github/workflows/run-experiments.yml` so that every
+push, pull request, or manual dispatch triggers the full evaluation sweep.  The
+workflow installs dependencies, validates the source tree, runs the spotlight
+TRiNC benchmark via `main.py`, and then executes the multi-scenario sweep in
+`experiments/run_all_algorithms.py`.  Outputs are written under
+`artifacts/ci/` during CI runs and uploaded as workflow artifacts for further
+inspection.
 
 ## Getting Started
 
@@ -51,7 +108,10 @@ python experiments/run_all_algorithms.py
 
 Both entry points accept `--artifacts-root <path>` to choose where the generated
 metrics, figures, and time-series CSV files should be written.  The default
-location is `./artifacts` inside the repository root.
+location is `./artifacts` inside the repository root.  The single-controller CLI
+stores its results under `artifacts/metrics/single/` and
+`artifacts/time_series/single/`, while the batch runner organises outputs by
+scenario beneath the same top-level folders.
 
 ## Extending the Benchmark
 
