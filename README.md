@@ -60,6 +60,27 @@ defined in `experiments/run_all_algorithms.py`:
 - `cooling_loss` – degraded actuator authority representing airflow issues.
 - `thermal_resilience` – high-frequency thermal perturbations.
 
+### Thermal Plant and Workload Modeling
+
+We model the hotspot dynamics with a normalized first-order plant,
+\(T_{k+1} = a T_k + (1 - a)(K_{\text{heat}} w_k - K_{\text{cool}} u_k)\),
+where \(a = \exp(-T_s / \tau_{th})\). The default parameters reflect a
+few-watt edge AI accelerator: \(\tau_{th} = 3\,\text{s}\) places the thermal
+time constant in a typical 1–5 s envelope; \(K_{\text{heat}} = 1.0\) means a
+fully loaded device without cooling drifts toward the upper end of the
+normalized range; \(K_{\text{cool}} = 0.6\) means maximum cooling under full
+load pulls the steady temperature down to roughly \(T \approx 0.4\). The
+normalization anchors 0 to ~40 °C and 1 to ~90 °C, matching practical silicon
+operating limits without embedding any hidden offsets in the code.
+
+Workloads are generated via `generate_edge_ai_workload` as normalized traces
+that mirror common edge-AI behaviours: bursty camera inference, idle recovery
+after batch jobs, slow ambient ramps, and composite stress tests. Each profile
+stays within \([0, 1]\) and is shared across all controllers, ensuring a fair
+comparison. The signals are deliberately synthetic rather than fitted to a
+specific TPU trace, giving a controlled benchmark that still stresses transient
+and steady-state regulation.
+
 ## Repository Layout
 
 ```
