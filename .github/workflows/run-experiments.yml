@@ -37,11 +37,8 @@ jobs:
       - name: Validate source layout
         run: python -m compileall src
 
-      - name: Run TRiNC spotlight benchmark
-        run: python main.py --algo trinc --artifacts-root "$ARTIFACTS_ROOT"
-
-      - name: Execute full controller sweep
-        run: python experiments/run_all_algorithms.py --artifacts-root "$ARTIFACTS_ROOT"
+      - name: Execute full controller sweep with tuning
+        run: python experiments/run_all_algorithms.py --artifacts-root "$ARTIFACTS_ROOT" --tune --scenario all
 
       - name: Upload experiment outputs
         uses: actions/upload-artifact@v4

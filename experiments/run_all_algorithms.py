@@ -16,8 +16,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config.default_config import (  # noqa: E402
+    apply_params_override,
     default_controller_params,
+    default_scenarios,
     default_simulation_params,
+    save_tuned_params_json,
 )
 from src.controllers.event_pid import EventPIDController  # noqa: E402
 from src.controllers.lif_snn_controller import LIFSpikingController  # noqa: E402
@@ -29,6 +32,7 @@ from src.models.workload_profiles import generate_edge_ai_workload  # noqa: E402
 from src.paths import ensure_artifact_layout, get_artifact_layout  # noqa: E402
 from src.simulation.metrics import compute_metrics  # noqa: E402
 from src.simulation.simulate_closed_loop import run_closed_loop  # noqa: E402
+from src.tuning import history_to_rows, tune_controllers  # noqa: E402
 from src.utils.io_utils import (  # noqa: E402
     save_collated_time_series_csv,
     save_metric_subset_csv,
@@ -36,208 +40,12 @@ from src.utils.io_utils import (  # noqa: E402
     save_time_series_csv,
 )
 
-
 CONTROLLERS = {
     "pid": PIDController,
     "pid_deadzone": PIDDeadzoneController,
     "event_pid": EventPIDController,
     "lif_snn": LIFSpikingController,
     "trinc": TRINCController,
-}
-
-
-ADJUSTMENT_STEPS = [
-    {},
-    {
-        "base_cooling": -0.06,
-        "tau_p": -0.012,
-        "tau_s": -0.011,
-        "a_p": 0.08,
-        "a_s": 0.06,
-        "rho": -0.08,
-        "refractory_steps": -3,
-    },
-    {
-        "base_cooling": -0.04,
-        "tau_p": -0.01,
-        "tau_s": -0.009,
-        "a_p": 0.06,
-        "a_s": 0.04,
-        "rho": -0.1,
-        "theta_h": -0.006,
-    },
-    {
-        "base_cooling": -0.08,
-        "tau_p": -0.015,
-        "tau_s": -0.013,
-        "a_p": 0.1,
-        "a_s": 0.08,
-        "rho": -0.12,
-        "alpha_h": -0.003,
-        "refractory_steps": -4,
-    },
-    {
-        "base_cooling": -0.03,
-        "tau_p": -0.007,
-        "tau_s": -0.006,
-        "a_p": 0.05,
-        "a_s": 0.05,
-        "rho": -0.05,
-        "theta_h": -0.004,
-        "a_h": 0.015,
-        "refractory_steps": -2,
-    },
-    {
-        "base_cooling": 0.015,
-        "tau_p": -0.002,
-        "tau_s": -0.002,
-        "a_p": 0.02,
-        "a_s": 0.02,
-        "rho": -0.02,
-    },
-    {
-        "base_cooling": -0.05,
-        "tau_p": -0.011,
-        "tau_s": -0.01,
-        "a_p": 0.07,
-        "a_s": 0.06,
-        "rho": -0.09,
-        "theta_h": -0.007,
-        "w_h": 0.015,
-    },
-    {
-        "base_cooling": -0.07,
-        "tau_p": -0.013,
-        "tau_s": -0.012,
-        "a_p": 0.09,
-        "a_s": 0.07,
-        "rho": -0.14,
-        "alpha_h": -0.004,
-        "w_h": 0.01,
-    },
-    {
-        "base_cooling": -0.18,
-        "tau_p": -0.02,
-        "tau_s": -0.018,
-        "a_p": 0.14,
-        "a_s": 0.12,
-        "rho": -0.18,
-        "theta_h": -0.012,
-        "refractory_steps": -5,
-    },
-    {
-        "base_cooling": -0.09,
-        "tau_p": -0.012,
-        "tau_s": -0.011,
-        "a_p": 0.08,
-        "a_s": 0.06,
-        "rho": -0.11,
-        "alpha_h": -0.005,
-        "w_h": 0.02,
-    },
-]
-
-
-TRACKING_FOCUSED_STEPS = [
-    {},
-    {
-        "base_cooling": -0.18,
-        "tau_p": 0.006,
-        "tau_s": 0.005,
-        "a_p": -0.14,
-        "a_s": -0.12,
-        "a_h": -0.045,
-        "rho": -0.06,
-        "w_h": -0.05,
-    },
-    {
-        "base_cooling": -0.22,
-        "tau_p": 0.008,
-        "tau_s": 0.007,
-        "a_p": -0.18,
-        "a_s": -0.16,
-        "a_h": -0.05,
-        "rho": -0.1,
-        "theta_h": 0.006,
-        "alpha_h": -0.012,
-        "refractory_steps": -4,
-    },
-    {
-        "base_cooling": -0.16,
-        "tau_p": 0.01,
-        "tau_s": 0.009,
-        "a_p": -0.12,
-        "a_s": -0.1,
-        "a_h": -0.04,
-        "rho": -0.08,
-        "w_h": -0.04,
-    },
-    {
-        "base_cooling": -0.2,
-        "tau_p": 0.012,
-        "tau_s": 0.011,
-        "a_p": -0.16,
-        "a_s": -0.14,
-        "rho": -0.12,
-        "theta_h": 0.008,
-        "alpha_h": -0.014,
-        "refractory_steps": -5,
-    },
-    {
-        "base_cooling": -0.12,
-        "tau_p": 0.005,
-        "tau_s": 0.004,
-        "a_p": -0.1,
-        "a_s": -0.08,
-        "rho": -0.05,
-        "w_h": -0.03,
-    },
-    {
-        "base_cooling": -0.24,
-        "tau_p": 0.014,
-        "tau_s": 0.013,
-        "a_p": -0.19,
-        "a_s": -0.17,
-        "rho": -0.14,
-        "theta_h": 0.01,
-        "alpha_h": -0.016,
-        "refractory_steps": -6,
-    },
-    {
-        "base_cooling": -0.14,
-        "tau_p": 0.007,
-        "tau_s": 0.006,
-        "a_p": -0.11,
-        "a_s": -0.09,
-        "rho": -0.07,
-        "alpha_h": -0.01,
-    },
-    {
-        "base_cooling": -0.26,
-        "tau_p": 0.016,
-        "tau_s": 0.014,
-        "a_p": -0.2,
-        "a_s": -0.18,
-        "rho": -0.16,
-        "theta_h": 0.012,
-        "alpha_h": -0.018,
-        "refractory_steps": -7,
-    },
-    {
-        "base_cooling": -0.1,
-        "tau_p": 0.009,
-        "tau_s": 0.008,
-        "a_p": -0.12,
-        "a_s": -0.1,
-        "rho": -0.09,
-        "w_h": -0.035,
-    },
-]
-
-
-SCENARIO_ADJUSTMENTS = {
-    # Sinusoidal tracking prefers lower base cooling and softer reflex gains
-    "tracking_drill": TRACKING_FOCUSED_STEPS,
 }
 
 
@@ -258,78 +66,28 @@ def instantiate(name: str, params, Ts: float):
 
 
 def build_scenarios() -> List[Scenario]:
-    """Return the catalogue of benchmark scenarios."""
-
-    return [
-        Scenario(
-            name="baseline_burst",
-            profile="baseline",
-            description="Three-phase burst mirroring nominal edge inference",
-            sim_overrides={},
-        ),
-        Scenario(
-            name="burst_chain",
-            profile="burst_chain",
-            description="Chained bursts stressing recovery after rapid spikes",
-            sim_overrides={"duration": 22.0, "T_ref": 0.56},
-        ),
-        Scenario(
-            name="idle_recovery",
-            profile="idle_recovery",
-            description="Long idle then recovery to mimic throttled workloads",
-            sim_overrides={"tau_th": 2.4, "duration": 24.0},
-        ),
-        Scenario(
-            name="noisy_lab",
-            profile="noisy_lab",
-            description="Lab noise injected on top of burst workloads",
-            sim_overrides={"T_ref": 0.57},
-        ),
-        Scenario(
-            name="thermal_shock",
-            profile="thermal_shock",
-            description="Thermal shock event with slow dissipation",
-            sim_overrides={"tau_th": 2.2, "K_cool": -1.15},
-        ),
-        Scenario(
-            name="tracking_drill",
-            profile="tracking_drill",
-            description="Sinusoidal tracking drill for agile workloads",
-            sim_overrides={"tau_th": 1.8, "duration": 21.0},
-        ),
-        Scenario(
-            name="progressive_ramp",
-            profile="progressive_ramp",
-            description="Progressive ambient heating with late burst",
-            sim_overrides={"duration": 26.0, "T_ref": 0.58},
-        ),
-        Scenario(
-            name="sensor_edge",
-            profile="sensor_edge",
-            description="Sensor fusion loads with intermittent processing",
-            sim_overrides={"tau_th": 2.1},
-        ),
-        Scenario(
-            name="cooling_loss",
-            profile="cooling_loss",
-            description="Degraded cooling path stressing energy efficiency",
-            sim_overrides={"K_cool": -1.0, "T_ref": 0.565},
-        ),
-        Scenario(
-            name="thermal_resilience",
-            profile="thermal_resilience",
-            description="High-frequency perturbations to test resilience",
-            sim_overrides={"duration": 23.0, "tau_th": 2.3},
-        ),
-    ]
+    return [Scenario(**entry) for entry in default_scenarios()]
 
 
-def main(artifacts_root: Path | None = None, scenario_name: str | None = None) -> None:
+def main(
+    artifacts_root: Path | None = None,
+    scenario_name: str | None = None,
+    run_tuning: bool = False,
+    tuning_workloads: List[str] | None = None,
+) -> None:
     artifacts = get_artifact_layout(artifacts_root)
     ensure_artifact_layout(artifacts)
 
     sim_defaults = default_simulation_params()
     ctrl_defaults = default_controller_params()
+
+    tuning_history_rows: List[Dict[str, float]] = []
+    if run_tuning:
+        tuned_params, history = tune_controllers(tuning_workloads=tuning_workloads)
+        ctrl_defaults = apply_params_override(ctrl_defaults, tuned_params)
+        tuning_history_rows = history_to_rows(history)
+        save_tuned_params_json(tuned_params, artifacts.metrics / "tuned_params.json")
+        save_metrics_csv(artifacts.metrics / "tuning_history.csv", tuning_history_rows)
 
     scenarios = build_scenarios()
     if scenario_name and scenario_name != "all":
@@ -354,25 +112,14 @@ def main(artifacts_root: Path | None = None, scenario_name: str | None = None) -
         workload = generate_edge_ai_workload(Ts, horizon, profile=scenario.profile)
 
         def model_factory() -> ThermalModel:
-            return ThermalModel(sim_cfg["tau_th"], sim_cfg["K_cool"], Ts)
-
-        tuned_trinc_params, tuning_history = tune_trinc_for_scenario(
-            scenario,
-            model_factory,
-            workload,
-            sim_cfg,
-            ctrl_defaults["trinc"],
-        )
-
-        scenario_ctrl_params = deepcopy(ctrl_defaults)
-        scenario_ctrl_params["trinc"] = tuned_trinc_params
+            return ThermalModel(sim_cfg["tau_th"], sim_cfg["K_heat"], sim_cfg["K_cool"], Ts)
 
         scenario_metrics, time_series = run_controllers_for_scenario(
             scenario,
             model_factory,
             workload,
             sim_cfg,
-            scenario_ctrl_params,
+            ctrl_defaults,
             artifacts,
         )
 
@@ -396,7 +143,8 @@ def main(artifacts_root: Path | None = None, scenario_name: str | None = None) -
             columns=["algo_name", "N_events", "N_du"],
         )
 
-        save_metrics_csv(scenario_metric_dir / "trinc_tuning_history.csv", tuning_history)
+        if tuning_history_rows:
+            save_metrics_csv(scenario_metric_dir / "tuning_history.csv", tuning_history_rows)
 
         if time_series:
             first = next(iter(time_series.values()))
@@ -505,106 +253,6 @@ def run_controllers_for_scenario(
     return metrics_records, time_series_results
 
 
-def tune_trinc_for_scenario(
-    scenario: Scenario,
-    model_factory: Callable[[], ThermalModel],
-    workload: np.ndarray,
-    sim_cfg: Dict[str, float],
-    base_params: Dict[str, float],
-    max_iters: int = 10,
-) -> tuple[Dict[str, float], List[Dict[str, float]]]:
-    """Evaluate scenario-aware TRiNC variants and keep the best one."""
-
-    history: List[Dict[str, float]] = []
-    best_params = deepcopy(base_params)
-    best_score = float("inf")
-
-    base_adjustments = SCENARIO_ADJUSTMENTS.get(scenario.name, ADJUSTMENT_STEPS)
-    adjustments = base_adjustments[: max_iters]
-
-    for iteration, delta in enumerate(adjustments, start=1):
-        candidate_params = _apply_adjustment(base_params, delta)
-        controller = TRINCController(**candidate_params)
-        results = run_closed_loop(
-            model=model_factory(),
-            controller=controller,
-            workload=workload,
-            T_ref=sim_cfg["T_ref"],
-            Ts=sim_cfg["Ts"],
-            T0=sim_cfg["T0"],
-            algo_name="trinc_tuning",
-        )
-
-        event_flags = (
-            np.abs(results["gP"]) + np.abs(results["gH"]) + np.abs(results["gS"])
-            if "gP" in results
-            else None
-        )
-        metrics = compute_metrics(
-            time=results["time"],
-            temperature=results["temperature"],
-            control=results["control"],
-            T_ref=sim_cfg["T_ref"],
-            event_flags=event_flags,
-        )
-
-        history_entry: Dict[str, float] = {"iteration": float(iteration), "variant": iteration - 1}
-        for key, value in candidate_params.items():
-            history_entry[key] = float(value) if isinstance(value, (int, float)) else value
-        history_entry.update(metrics)
-        history.append(history_entry)
-
-        score = _score_trinc_metrics(metrics)
-        if score < best_score:
-            best_score = score
-            best_params = deepcopy(candidate_params)
-
-        print(
-            "    Iteration {it}: overshoot={os:.4f}, sse={sse:.4f}, E2={e2:.4f}, events={events}".format(
-                it=iteration,
-                os=metrics["overshoot"],
-                sse=metrics["steady_state_error"],
-                e2=metrics["E2"],
-                events=int(metrics["N_events"]),
-            )
-        )
-
-    return best_params, history
-
-
-def _score_trinc_metrics(metrics: Dict[str, float]) -> float:
-    """Score TRiNC metrics with penalties for poor regulation."""
-
-    penalty = 0.0
-    penalty += max(0.0, metrics["overshoot"] - 0.25) * 5.0
-    penalty += max(0.0, abs(metrics["steady_state_error"]) - 0.015) * 4.0
-    return metrics["E2"] + penalty
-
-
-def _apply_adjustment(base: Dict[str, float], delta: Dict[str, float]) -> Dict[str, float]:
-    """Return a parameter dictionary with the specified delta applied and clamped."""
-
-    params = deepcopy(base)
-    for key, change in delta.items():
-        if key == "refractory_steps":
-            params[key] = int(max(1, params[key] + change))
-        else:
-            params[key] = params[key] + change
-
-    params["tau_p"] = max(0.01, params["tau_p"])
-    params["tau_s"] = max(0.01, params.get("tau_s", base.get("tau_s", 0.02)))
-    params["theta_h"] = max(0.02, params.get("theta_h", base["theta_h"]))
-    params["alpha_h"] = min(0.1, max(0.01, params.get("alpha_h", base["alpha_h"])))
-    params["w_h"] = max(0.05, params.get("w_h", base["w_h"]))
-    params["rho"] = min(0.95, max(0.55, params.get("rho", base["rho"])))
-    params["a_p"] = max(0.05, params["a_p"])
-    params["a_h"] = max(0.05, params["a_h"])
-    params["a_s"] = max(0.05, params["a_s"])
-    params["base_cooling"] = min(0.6, max(0.05, params["base_cooling"]))
-
-    return params
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the full TRiNC benchmark suite")
     parser.add_argument(
@@ -619,5 +267,17 @@ if __name__ == "__main__":
         default="all",
         help="Name of the scenario to run (default: all scenarios)",
     )
+    parser.add_argument(
+        "--tune",
+        action="store_true",
+        help="Run automatic tuning before executing scenarios",
+    )
+    parser.add_argument(
+        "--tuning-workloads",
+        type=str,
+        nargs="*",
+        default=None,
+        help="Optional subset of workloads to use during tuning",
+    )
     args = parser.parse_args()
-    main(args.artifacts_root, args.scenario)
+    main(args.artifacts_root, args.scenario, args.tune, args.tuning_workloads)

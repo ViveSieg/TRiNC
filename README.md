@@ -13,8 +13,9 @@ codebase.
   and-fire SNN, and TRiNC) under `src/controllers/`.
 - Metric computation utilities in `src/simulation/metrics.py` and CSV helpers in
   `src/utils/io_utils.py`.
-- Command line entry points for running a single controller (`main.py`) or the
-  full sweep across scenarios (`experiments/run_all_algorithms.py`).
+- Command line entry points for running a single controller locally via a small
+  text menu (`main.py`) or the full sweep across scenarios with CSV exports
+  (`experiments/run_all_algorithms.py`).
 
 ## Simulation Stack
 
@@ -60,6 +61,27 @@ defined in `experiments/run_all_algorithms.py`:
 - `cooling_loss` – degraded actuator authority representing airflow issues.
 - `thermal_resilience` – high-frequency thermal perturbations.
 
+### Thermal Plant and Workload Modeling
+
+We model the hotspot dynamics with a normalized first-order plant,
+\(T_{k+1} = a T_k + (1 - a)(K_{\text{heat}} w_k - K_{\text{cool}} u_k)\),
+where \(a = \exp(-T_s / \tau_{th})\). The default parameters reflect a
+few-watt edge AI accelerator: \(\tau_{th} = 3\,\text{s}\) places the thermal
+time constant in a typical 1–5 s envelope; \(K_{\text{heat}} = 1.0\) means a
+fully loaded device without cooling drifts toward the upper end of the
+normalized range; \(K_{\text{cool}} = 0.6\) means maximum cooling under full
+load pulls the steady temperature down to roughly \(T \approx 0.4\). The
+normalization anchors 0 to ~40 °C and 1 to ~90 °C, matching practical silicon
+operating limits without embedding any hidden offsets in the code.
+
+Workloads are generated via `generate_edge_ai_workload` as normalized traces
+that mirror common edge-AI behaviours: bursty camera inference, idle recovery
+after batch jobs, slow ambient ramps, and composite stress tests. Each profile
+stays within \([0, 1]\) and is shared across all controllers, ensuring a fair
+comparison. The signals are deliberately synthetic rather than fitted to a
+specific TPU trace, giving a controlled benchmark that still stresses transient
+and steady-state regulation.
+
 ## Repository Layout
 
 ```
@@ -85,12 +107,13 @@ snapshot.
 ## Automation
 
 The repository ships with `.github/workflows/run-experiments.yml` so that every
-push, pull request, or manual dispatch triggers the full evaluation sweep.  The
-workflow installs dependencies, validates the source tree, runs the spotlight
-TRiNC benchmark via `main.py`, and then executes the multi-scenario sweep in
-`experiments/run_all_algorithms.py`.  Outputs are written under
-`artifacts/ci/` during CI runs and uploaded as workflow artifacts for further
-inspection.
+push, pull request, or manual dispatch executes the same end-to-end flow used
+for the paper. The workflow installs dependencies, validates the source tree,
+and then runs `experiments/run_all_algorithms.py` with tuning enabled across
+all scenarios. This produces tuned controller parameters, per-scenario metrics
+CSVs, and aggregate summaries under `artifacts/ci/`, which are uploaded as
+workflow artifacts for inspection. The interactive `main.py` helper is intended
+for local spot checks and is not invoked in CI.
 
 ## Getting Started
 
@@ -112,6 +135,21 @@ location is `./artifacts` inside the repository root.  The single-controller CLI
 stores its results under `artifacts/metrics/single/` and
 `artifacts/time_series/single/`, while the batch runner organises outputs by
 scenario beneath the same top-level folders.
+
+### Tuning, scenarios, and outputs
+
+- **Automatic tuning**: append `--tune` when invoking
+  `experiments/run_all_algorithms.py` to perform hyper-parameter optimisation
+  before evaluating every controller. The tuned parameters are written to
+  `artifacts/metrics/tuned_params.json` alongside a tuning-history CSV so runs
+  are reproducible.
+- **Scenarios**: pass `--scenario <name>` to focus on a single workload
+  profile. Use `all` (default) to sweep the full catalogue for publication-ready
+  figures.
+- **Local exploration**: run `python main.py` without flags to step through a
+  small interactive menu for picking controllers and workloads when iterating on
+  ideas. This convenience wrapper mirrors the batch defaults but avoids the full
+  sweep when you only need a quick check.
 
 ## Extending the Benchmark
 
