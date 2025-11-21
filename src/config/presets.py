@@ -5,7 +5,45 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Any
 
-from .schema import SimulationConfig, ModelConfig, ControllerConfig
+from .schema import (
+    SimulationConfig,
+    ModelConfig,
+    ControllerConfig,
+    EnvironmentConfig,
+    ExperimentConfig,
+)
+
+
+def get_default_environment_config() -> EnvironmentConfig:
+    """Return default environment configuration.
+    
+    Returns
+    -------
+    EnvironmentConfig
+        Default environment parameters (hardware and physical properties).
+    """
+    return EnvironmentConfig(
+        physics_gamma=0.1,
+        input_dim=8,
+        hidden_dim=64,
+        T_amb=0.4,
+        Ts=0.1,
+    )
+
+
+def get_default_experiment_config() -> ExperimentConfig:
+    """Return default experiment configuration.
+    
+    Returns
+    -------
+    ExperimentConfig
+        Default experiment parameters (simulation settings).
+    """
+    return ExperimentConfig(
+        duration=22.0,
+        T_ref=0.62,
+        T0=0.55,
+    )
 
 
 def get_default_simulation_config() -> SimulationConfig:
@@ -209,6 +247,8 @@ def get_golden_quartet_scenarios() -> list[Dict[str, Any]]:
 
 
 __all__ = [
+    "get_default_environment_config",
+    "get_default_experiment_config",
     "get_default_simulation_config",
     "get_default_model_config",
     "get_default_controller_params",

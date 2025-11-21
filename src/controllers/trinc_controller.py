@@ -23,7 +23,10 @@ from .registry import register_controller
 @register_controller("trinc")
 @dataclass
 class TRINCController(BaseController):
-    """Event-driven controller leveraging tri-reflex neural modulation."""
+    """Event-driven controller leveraging tri-reflex neural modulation.
+    
+    Supports ablation studies through gate disabling flags.
+    """
 
     tau_p: float
     tau_s: float
@@ -38,6 +41,9 @@ class TRINCController(BaseController):
     u_min: float = 0.0
     u_max: float = 1.0
     base_cooling: float = 0.22
+    enable_p_gate: bool = True  # Enable/disable P gate for ablation
+    enable_h_gate: bool = True  # Enable/disable H gate for ablation
+    enable_s_gate: bool = True  # Enable/disable S gate for ablation
 
     def __post_init__(self) -> None:
         self.h_state = 0.0
@@ -60,28 +66,34 @@ class TRINCController(BaseController):
 
         # P gate: magnitude-based reflex
         g_p = 0.0
-        if error > self.tau_p:
-            g_p = 1.0
-        elif error < -self.tau_p:
-            g_p = -1.0
+        if self.enable_p_gate:
+            if error > self.tau_p:
+                g_p = 1.0
+            elif error < -self.tau_p:
+                g_p = -1.0
 
         # H gate: leaky accumulator
-        h_temp = (1.0 - self.alpha_h) * self.h_state + self.w_h * error
         g_h = 0.0
-        if h_temp >= self.theta_h:
-            g_h = 1.0
-            h_temp -= self.theta_h
-        elif h_temp <= -self.theta_h:
-            g_h = -1.0
-            h_temp += self.theta_h
-        self.h_state = h_temp
+        if self.enable_h_gate:
+            h_temp = (1.0 - self.alpha_h) * self.h_state + self.w_h * error
+            if h_temp >= self.theta_h:
+                g_h = 1.0
+                h_temp -= self.theta_h
+            elif h_temp <= -self.theta_h:
+                g_h = -1.0
+                h_temp += self.theta_h
+            self.h_state = h_temp
+        else:
+            # Keep H state updated even if gate is disabled (for consistency)
+            self.h_state = (1.0 - self.alpha_h) * self.h_state + self.w_h * error
 
         # S gate: surprise reflex for rapid changes
         g_s = 0.0
-        if delta_error > self.tau_s and error > 0:
-            g_s = 1.0
-        elif delta_error < -self.tau_s and error < 0:
-            g_s = -1.0
+        if self.enable_s_gate:
+            if delta_error > self.tau_s and error > 0:
+                g_s = 1.0
+            elif delta_error < -self.tau_s and error < 0:
+                g_s = -1.0
 
         # Optional refractory behavior to avoid chatter
         if self.refractory > 0:

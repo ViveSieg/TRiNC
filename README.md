@@ -16,8 +16,13 @@ TRiNC addresses the challenge of thermal control in edge-AI accelerators by comb
 - **PiNN thermal model**: Gray-box model combining learned natural heating with physics-based cooling control
 - **Bayesian optimization**: Multi-objective optimization using Optuna to find Pareto frontiers for all controllers
 - **Real-world data integration**: Support for Google Edge TPU workload traces (`TPU_Google_Edge.pkl`)
-- **Comprehensive metrics**: ITAE, Energy, Overshoot, Rise Time, and Settling Time computation
+- **Comprehensive metrics**: ITAE, Energy, Overshoot, Rise Time, Settling Time, and computational complexity (FLOPs, inference latency)
 - **Professional CLI**: Interactive command-line interface with Rich tables and progress indicators
+- **Sim2Real robustness**: Sensor noise and actuator delay injection for realistic simulation
+- **Ablation studies**: Automated gate-level ablation experiments for TRiNC
+- **Interactive visualization**: Plotly-based 3D Pareto plots and HTML reports
+- **Type safety**: Full mypy type checking support
+- **Unit testing**: Comprehensive test suite for controller validation
 
 ## Architecture
 
@@ -52,6 +57,10 @@ TRiNC/
 │       └── plotting.py    # Visualization tools
 ├── main.py                  # Unified CLI entry point
 ├── requirements.txt        # Python dependencies
+├── pyproject.toml          # Mypy and pytest configuration
+├── tests/                  # Unit tests
+│   ├── __init__.py
+│   └── test_trinc_controller.py
 └── README.md
 ```
 
@@ -123,6 +132,9 @@ pip install -r requirements.txt
 - Typer >= 0.9.0
 - Rich >= 13.0.0
 - Questionary >= 2.0.0
+- Pytest >= 7.0.0 (for unit testing)
+- Mypy >= 1.0.0 (for type checking)
+- Plotly >= 5.0.0 (for interactive visualization)
 
 ## Quick Start
 
@@ -154,6 +166,9 @@ python main.py simulate
 
 # Generate Pareto frontier plot
 python main.py analyze
+
+# Run TRiNC ablation study
+python main.py ablation
 
 # Clean generated artifacts
 python main.py clean
@@ -189,10 +204,21 @@ Interactive prompts allow you to:
 python main.py analyze
 ```
 
-Generates a multi-controller Pareto frontier plot showing:
-- ITAE vs Energy trade-offs for all controllers
+Generates multi-controller Pareto frontier plots:
+- **2D Pareto plot**: ITAE vs Energy trade-offs (saved as PNG)
+- **3D Pareto plot**: ITAE vs Energy vs Inference Latency (saved as interactive HTML)
 - TRiNC dominance visualization
-- Saved to `artifacts/pareto_comparison.png`
+
+### Ablation Studies
+
+```bash
+python main.py ablation
+```
+
+Automated ablation experiments for TRiNC controller:
+- Tests all gate combinations (Full TRiNC, P+H, P+S, H+S, P only, H only, S only)
+- Compares performance metrics across configurations
+- Generates results table and CSV export
 
 ## Controller Portfolio
 
@@ -208,7 +234,25 @@ All controllers implement the `BaseController` interface with `reset()` and `com
 
 ## Configuration
 
-### Simulation Configuration
+### Configuration Hierarchy
+
+The platform uses a two-layer configuration system for better separation of concerns:
+
+- **EnvironmentConfig**: Fixed hardware and physical properties
+  - `physics_gamma`: Physical cooling coefficient
+  - `input_dim`: Workload feature dimension
+  - `hidden_dim`: Network hidden layer width
+  - `T_amb`: Ambient temperature
+  - `Ts`: Sampling time (hardware constraint)
+
+- **ExperimentConfig**: Variable experimental settings
+  - `duration`: Simulation duration
+  - `T_ref`: Reference temperature (target)
+  - `T0`: Initial temperature
+
+- **SimulationConfig**: Legacy combined config (for backward compatibility)
+
+### Default Simulation Parameters
 
 Default simulation parameters (via `get_default_simulation_config()`):
 - Sampling time: `Ts = 0.1 s` (10 Hz control loop)
@@ -224,6 +268,25 @@ PiNN model parameters (via `get_default_model_config()`):
 - Input dimension: `input_dim = 8` (from TPU data)
 - Hidden layer width: `hidden_dim = 64`
 
+### Realism Configuration
+
+For Sim2Real robustness testing, use `RealismConfig`:
+
+```python
+from src.simulation.executor import SimulationExecutor, RealismConfig
+from src.config.schema import SimulationConfig
+
+# Enable sensor noise and actuator delay
+realism = RealismConfig(
+    sensor_noise_std=0.01,      # Gaussian noise standard deviation
+    actuator_delay_steps=2,     # Control signal delay (time steps)
+    enable_noise=True,
+    enable_delay=True,
+)
+
+executor = SimulationExecutor(sim_config, realism_config=realism)
+```
+
 ### Search Spaces
 
 Wide, fair parameter search spaces are defined in `get_search_space()` for all controllers to prevent "weak baseline" criticism. Each controller has carefully tuned bounds that allow comprehensive exploration of the design space.
@@ -232,11 +295,48 @@ Wide, fair parameter search spaces are defined in `get_search_space()` for all c
 
 The platform computes comprehensive performance metrics:
 
+### Control Performance
 - **ITAE** (Integral Time-weighted Absolute Error): Tracking accuracy
 - **Energy**: Control effort consumption (sum of u²)
 - **Overshoot**: Safety metric (maximum temperature above reference)
 - **Rise Time**: Time to reach 90% of final value from 10%
 - **Settling Time**: Time to reach within 2% of reference
+
+### Computational Complexity
+- **FLOPs per step**: Estimated floating-point operations per control computation
+- **Total FLOPs**: Total operations for entire simulation
+- **Inference latency (ms)**: Measured wall-clock time per control call
+- **Total compute time (ms)**: Estimated total computation time
+
+These metrics are critical for embedded system deployment, where computational overhead can be a limiting factor.
+
+## Testing and Quality Assurance
+
+### Unit Tests
+
+Run the test suite:
+
+```bash
+pytest tests/
+```
+
+The test suite includes:
+- Controller initialization and reset tests
+- Refractory period behavior validation
+- Gate functionality tests (P, H, S gates)
+- Ablation study tests
+- Control output bounds verification
+- Synaptic integration tests
+
+### Type Checking
+
+Run mypy for static type analysis:
+
+```bash
+mypy src/
+```
+
+The project uses strict type checking to catch potential bugs early, especially important for scientific computing where dimension mismatches can cause silent errors.
 
 ## Extending the Platform
 
@@ -289,3 +389,47 @@ The platform expects TPU data in the following format:
 - **Output**: Shape `(N, Seq, H, W)` - Thermal maps (automatically extracts T_max)
 
 Data is automatically split into 80% training and 20% test sets. The PiNN model learns natural heating patterns from training data and is validated on the test set.
+
+## Advanced Features
+
+### Sim2Real Robustness Testing
+
+The platform supports injection of realistic disturbances to test controller robustness:
+
+- **Sensor Noise**: Gaussian white noise added to temperature readings
+- **Actuator Delay**: Control signals delayed by 1-2 time steps before taking effect
+
+These features are essential for validating that controllers perform well in real-world embedded environments where perfect sensors and instant actuation are not available.
+
+### TRiNC Ablation Studies
+
+TRiNC's three reflex gates (P, H, S) can be individually disabled for ablation experiments:
+
+- **P gate**: Proportional magnitude-based reflex
+- **H gate**: Habituation leaky accumulator
+- **S gate**: Surprise derivative-based reflex
+
+The `ablation` command automatically tests all 7 gate combinations to understand the contribution of each component.
+
+### Interactive Visualization
+
+The platform generates interactive HTML reports using Plotly:
+
+- **Temperature response plots**: Multi-controller comparison with zoom and hover
+- **Control signal visualization**: Real-time control effort analysis
+- **3D Pareto plots**: ITAE vs Energy vs Latency trade-offs
+
+These interactive plots enable detailed analysis of controller behavior during transient phases and step responses.
+
+## Citation
+
+If you use TRiNC in your research, please cite:
+
+```bibtex
+@software{trinc2024,
+  title={TRiNC: Multi-Controller Thermal Control Benchmarking Platform},
+  author={...},
+  year={2024},
+  url={https://github.com/.../TRiNC}
+}
+```

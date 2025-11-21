@@ -10,9 +10,32 @@ import numpy as np
 
 from ..controllers.base import BaseController
 from ..config.schema import SimulationConfig
-from ..utils.metrics import compute_metrics
+from ..utils.metrics import compute_metrics, compute_complexity_metrics
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class RealismConfig:
+    """Configuration for realistic simulation disturbances.
+    
+    This configuration enables injection of real-world disturbances to
+    test controller robustness in Sim2Real scenarios.
+    """
+    
+    sensor_noise_std: float = 0.0  # Standard deviation of Gaussian sensor noise
+    actuator_delay_steps: int = 0  # Number of steps delay before control signal takes effect
+    enable_noise: bool = False  # Enable/disable noise injection
+    enable_delay: bool = False  # Enable/disable actuator delay
+    
+    def __post_init__(self) -> None:
+        """Validate parameter ranges."""
+        assert self.sensor_noise_std >= 0, "Sensor noise std must be non-negative"
+        assert self.actuator_delay_steps >= 0, "Actuator delay steps must be non-negative"
+        if self.enable_noise:
+            assert self.sensor_noise_std > 0, "Sensor noise std must be > 0 when noise is enabled"
+        if self.enable_delay:
+            assert self.actuator_delay_steps > 0, "Actuator delay steps must be > 0 when delay is enabled"
 
 
 @dataclass
@@ -29,18 +52,31 @@ class SimulationResult:
 
 
 class SimulationExecutor:
-    """Universal simulation executor."""
+    """Universal simulation executor with optional realism disturbances."""
     
-    def __init__(self, config: SimulationConfig) -> None:
+    def __init__(
+        self,
+        config: SimulationConfig,
+        realism_config: Optional[RealismConfig] = None,
+    ) -> None:
         """Initialize executor.
         
         Parameters
         ----------
         config : SimulationConfig
             Simulation configuration
+        realism_config : Optional[RealismConfig]
+            Realism configuration for noise and delay injection (default: None, no disturbances)
         """
         self.config = config
+        self.realism_config = realism_config or RealismConfig()
         self.horizon = int(round(config.duration / config.Ts))
+        
+        # Initialize control signal buffer for actuator delay
+        if self.realism_config.enable_delay:
+            self.control_buffer: list[float] = [0.0] * self.realism_config.actuator_delay_steps
+        else:
+            self.control_buffer = []
     
     def run(
         self,
@@ -85,14 +121,37 @@ class SimulationExecutor:
         model.reset(T0)
         controller.reset()
         
+        # Reset control buffer for actuator delay
+        if self.realism_config.enable_delay:
+            self.control_buffer = [0.0] * self.realism_config.actuator_delay_steps
+        
         T_k = T0
         u_k = 0.0
         
         # Main loop
         for k in range(self.horizon):
-            error[k] = T_k - T_ref
+            # Inject sensor noise: controller sees noisy temperature reading
+            T_measured = T_k
+            if self.realism_config.enable_noise:
+                noise = np.random.normal(0.0, self.realism_config.sensor_noise_std)
+                T_measured = T_k + noise
+                # Clip to valid range
+                T_measured = np.clip(T_measured, 0.0, 1.0)
+            
+            # Compute error based on measured (possibly noisy) temperature
+            error[k] = T_measured - T_ref
             u_k = controller.compute_control(error[k])
             control_signal[k] = u_k
+            
+            # Apply actuator delay: use delayed control signal
+            if self.realism_config.enable_delay:
+                u_effective = self.control_buffer[0] if len(self.control_buffer) > 0 else 0.0
+                # Update buffer: shift and add new control
+                self.control_buffer = self.control_buffer[1:] + [u_k]
+            else:
+                u_effective = u_k
+            
+            # Store actual (noise-free) temperature for metrics
             temperature[k] = T_k
             
             # Get current workload (supports multi-dimensional)
@@ -101,9 +160,9 @@ class SimulationExecutor:
             else:
                 w_k = workload[k]
             
-            # Model step
+            # Model step with effective (possibly delayed) control signal
             if hasattr(model, 'step'):
-                T_k = model.step(T_k, u_k, w_k)
+                T_k = model.step(T_k, u_effective, w_k)
             else:
                 raise AttributeError(f"Model {type(model)} does not implement step method")
         
@@ -167,6 +226,14 @@ class SimulationExecutor:
             else:
                 metrics['settling_time'] = float(time[-1])
         
+        # Compute computational complexity metrics
+        complexity_metrics = compute_complexity_metrics(
+            controller=controller,
+            algo_name=algo_name,
+            horizon=self.horizon,
+        )
+        metrics.update(complexity_metrics)
+        
         logger.debug(f"Simulation completed: {algo_name}, ITAE={itae:.4f}, Energy={energy:.4f}")
         
         return SimulationResult(
@@ -180,4 +247,4 @@ class SimulationExecutor:
         )
 
 
-__all__ = ["SimulationExecutor", "SimulationResult"]
+__all__ = ["SimulationExecutor", "SimulationResult", "RealismConfig"]

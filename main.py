@@ -367,6 +367,7 @@ def analyze() -> None:
 def plot_multi_controller_pareto() -> None:
     """Plot multi-controller Pareto frontier showing TRiNC dominance."""
     import matplotlib.pyplot as plt
+    from src.utils.plotting import create_pareto_3d
     
     controllers = list_controllers()
     colors = {
@@ -377,7 +378,11 @@ def plot_multi_controller_pareto() -> None:
         "trinc": "red",
     }
     
+    # 2D Pareto plot (matplotlib)
     fig, ax = plt.subplots(figsize=(10, 8))
+    
+    # Collect metrics for 3D plot
+    metrics_3d: Dict[str, Dict[str, float]] = {}
     
     for controller_name in controllers:
         tuning_file = TUNING_DIR / f"tuning_history_{controller_name}.csv"
@@ -402,6 +407,16 @@ def plot_multi_controller_pareto() -> None:
                         break
         
         pareto_df = df[pareto_mask].sort_values("ITAE")
+        
+        # Get best point (lowest ITAE)
+        if len(pareto_df) > 0:
+            best_idx = pareto_df["ITAE"].idxmin()
+            best_row = pareto_df.loc[best_idx]
+            metrics_3d[controller_name] = {
+                "ITAE": float(best_row["ITAE"]),
+                "Energy": float(best_row["Energy"]),
+                "inference_latency_ms": float(best_row.get("inference_latency_ms", 0.0)),
+            }
         
         color = colors.get(controller_name, "gray")
         ax.scatter(
@@ -429,8 +444,130 @@ def plot_multi_controller_pareto() -> None:
     plot_path = ARTIFACTS_DIR / "pareto_comparison.png"
     plt.tight_layout()
     plt.savefig(plot_path, dpi=300, bbox_inches="tight")
-    console.print(f"[green]Pareto plot saved to {plot_path}[/green]")
+    console.print(f"[green]2D Pareto plot saved to {plot_path}[/green]")
     plt.close()
+    
+    # 3D Pareto plot (Plotly)
+    if metrics_3d:
+        plot_3d_path = ARTIFACTS_DIR / "pareto_3d.html"
+        create_pareto_3d(metrics_3d, plot_3d_path)
+        console.print(f"[green]3D Pareto plot saved to {plot_3d_path}[/green]")
+
+
+@app.command()
+def ablation() -> None:
+    """Ablation Study: Test TRiNC with different gate combinations."""
+    console.print("[bold cyan]🔬 TRiNC Ablation Study[/bold cyan]")
+    
+    model, workload_loader = ensure_pinn_model()
+    sim_config = get_default_simulation_config()
+    executor = SimulationExecutor(sim_config)
+    
+    # Get default TRiNC parameters
+    trinc_params = get_default_controller_params()["trinc"]
+    
+    # Define ablation configurations
+    ablation_configs = [
+        {"name": "Full TRiNC", "enable_p": True, "enable_h": True, "enable_s": True},
+        {"name": "P+H only", "enable_p": True, "enable_h": True, "enable_s": False},
+        {"name": "P+S only", "enable_p": True, "enable_h": False, "enable_s": True},
+        {"name": "H+S only", "enable_p": False, "enable_h": True, "enable_s": True},
+        {"name": "P only", "enable_p": True, "enable_h": False, "enable_s": False},
+        {"name": "H only", "enable_p": False, "enable_h": True, "enable_s": False},
+        {"name": "S only", "enable_p": False, "enable_h": False, "enable_s": True},
+    ]
+    
+    # Select scenario
+    scenarios = get_golden_quartet_scenarios()
+    scenario_choice = questionary.select(
+        "Select scenario:",
+        choices=[s["name"] for s in scenarios],
+    ).ask()
+    
+    scenario = next(s for s in scenarios if s["name"] == scenario_choice)
+    profile_name = scenario["profile"]
+    
+    # Apply scenario overrides
+    scenario_sim_config = sim_config
+    if scenario.get("sim_overrides"):
+        from dataclasses import asdict
+        sim_dict = asdict(sim_config)
+        sim_dict.update(scenario["sim_overrides"])
+        scenario_sim_config = SimulationConfig(**sim_dict)
+        executor = SimulationExecutor(scenario_sim_config)
+    
+    horizon = int(round(scenario_sim_config.duration / scenario_sim_config.Ts))
+    workload = workload_loader.get_workload(
+        profile_name,
+        scenario_sim_config.Ts,
+        horizon,
+    )
+    
+    # Run ablation experiments
+    all_results: List[Dict[str, Any]] = []
+    
+    for config in ablation_configs:
+        console.print(f"\n[cyan]Testing: {config['name']}[/cyan]")
+        
+        # Create controller with ablation settings
+        controller_params = {
+            **trinc_params,
+            "enable_p_gate": config["enable_p"],
+            "enable_h_gate": config["enable_h"],
+            "enable_s_gate": config["enable_s"],
+        }
+        controller = create_controller("trinc", controller_params, Ts=scenario_sim_config.Ts)
+        
+        result = executor.run(
+            controller=controller,
+            model=model,
+            workload=workload,
+            algo_name=f"trinc_{config['name'].lower().replace(' ', '_')}",
+            T_ref=scenario_sim_config.T_ref,
+        )
+        
+        all_results.append({
+            "configuration": config["name"],
+            "P_gate": config["enable_p"],
+            "H_gate": config["enable_h"],
+            "S_gate": config["enable_s"],
+            **result.metrics,
+        })
+    
+    # Display results
+    table = Table(title=f"Ablation Study Results - {scenario_choice}")
+    table.add_column("Configuration")
+    table.add_column("Gates", justify="center")
+    table.add_column("ITAE", justify="right")
+    table.add_column("Energy", justify="right")
+    table.add_column("Overshoot", justify="right")
+    table.add_column("Latency (ms)", justify="right")
+    
+    for result in all_results:
+        gates = ""
+        if result["P_gate"]:
+            gates += "P"
+        if result["H_gate"]:
+            gates += "H"
+        if result["S_gate"]:
+            gates += "S"
+        
+        table.add_row(
+            result["configuration"],
+            gates,
+            f"{result['ITAE']:.4f}",
+            f"{result['Energy']:.4f}",
+            f"{result['Overshoot']:.4f}",
+            f"{result.get('inference_latency_ms', 0.0):.4f}",
+        )
+    
+    console.print(table)
+    
+    # Save results
+    results_df = pd.DataFrame(all_results)
+    results_path = ARTIFACTS_DIR / f"ablation_{scenario_choice}.csv"
+    results_df.to_csv(results_path, index=False)
+    console.print(f"\n[green]Ablation results saved to {results_path}[/green]")
 
 
 @app.command()
